@@ -42,7 +42,7 @@ void builtin(char **args, int fd){
 
 // ====== Read file contents ======
 // Read HEADER
-char readheader(int fd){
+/*char readheader(int fd){
     lseek(fd, 0, SEEK_SET);
     char header[29];
     if (read(fd, header, 28) == -1) {
@@ -52,10 +52,15 @@ char readheader(int fd){
     return header;
 }
 // Read PARTS
-
+*/
 // ====== Option 1 ========
 void printheader(int fd){
-    char header[] = readheader(fd);
+    lseek(fd, 0, SEEK_SET);
+    char header[29];
+    if (read(fd, header, 28) == -1) {
+        //perror("Error reading header");
+        exit(EXIT_FAILURE);
+    }
 
     char t = header[0];
     char description[20];
