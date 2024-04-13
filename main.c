@@ -54,12 +54,12 @@ int main(int argc, char *argv[]){
         exit(EXIT_FAILURE);
     
     // Check that np and nb are inside the limits
-    char header[] = readheader(fd);
+    /*char header[] = readheader(fd);
     int np = *((int*)(header + 20));
     int nb = *((int*)(header + 24));
     if (np < 0 || np >= 1000000 || nb < 0 || np >= 1000000)
         exit(EXIT_FAILURE);
-    
+    */
     char comando[1024];
     char *args[64];
     int len;
