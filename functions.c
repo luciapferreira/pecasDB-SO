@@ -1,16 +1,16 @@
 #include "header.h"
 
-void parse(char *comando, char **args){
+void parse(char *command, char **args){
     // int count = 0;
-    while (*comando != '\0'){
-        while (isspace((unsigned char) *comando))
-            *comando++ = '\0';
+    while (*command != '\0'){
+        while (isspace((unsigned char) *command))
+            *command++ = '\0';
         
-        *args++ = comando;
+        *args++ = command;
         // count++;
 
-        while ((*comando != '\0') && (!isspace ((unsigned char) *comando)))
-            comando++;        
+        while ((*command != '\0') && (!isspace ((unsigned char) *command)))
+            command++;        
     }
     *args = (char *) NULL;
     // return count;
@@ -42,25 +42,21 @@ void builtin(char **args, int fd){
 
 // ====== Read file contents ======
 // Read HEADER
-/*char readheader(int fd){
+void readheader(int fd, char header[29]) {
     lseek(fd, 0, SEEK_SET);
-    char header[29];
     if (read(fd, header, 28) == -1) {
-        //perror("Error reading header");
+        perror("Error reading header");
         exit(EXIT_FAILURE);
     }
-    return header;
 }
 // Read PARTS
-*/
+
 // ====== Option 1 ========
 void printheader(int fd){
-    lseek(fd, 0, SEEK_SET);
     char header[29];
-    if (read(fd, header, 28) == -1) {
-        //perror("Error reading header");
-        exit(EXIT_FAILURE);
-    }
+
+    readheader(fd, header);
+
 
     char t = header[0];
     char description[20];
@@ -69,5 +65,5 @@ void printheader(int fd){
     int np = *((int*)(header + 20));
     int nb = *((int*)(header + 24));
 
-    printf("HEADER %c %s %d %d\n", t, description, np, nb);
+    printf("HEADER %c%s %d %d\n", t, description, np, nb);
 }
