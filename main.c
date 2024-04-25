@@ -1,43 +1,6 @@
 /*
-One command line parameter – the name of the database file
-File structure:
-    Header consists of 28 Bytes:
-        The first 20 bytes are a string where:
-            The first character indicates the type of ordering of the parts:
-                T=0 - Order by id
-                T=1 - Order by name
-            The following 19 bytes are reserved for string description.
-        Next are two binary encoded integers (4 bytes each):
-            Number of parts (NP)
-            Number of brands (NB)
-    Next sections consists of a database of brands ordered as a set of brands.
-        Each brand is a string of at most 16 characters including the string terminator
-
-Manipulate the database of parts in a binary file, using 
-    open() close() read() write() and lseek() 
-!!! You may NOT use the standard library file functions !!!
-    fopen() fread() fwrite() etc...
-You may use the standard library for reading and writing to a terminal 
-    standard input scanf() and output printf()
-
-Options:
-    [X] 1 - print the header
-        Output: HEADER followed by number of parts and number of brands. Tokens separated by space
-            ex: HEADER 6 2
-    [X] 9 - exit
-    
-    When the database file is ordered by ID:
-    [X] 2 - view a part with id
-    [X] maybe 3 - add a new part specifying (in this order): name, brand, id, weight, price - the id can be added automatically
-    [X] 4 - change a part with id specifying (in this order): new name, brand, id, weight, price
-    
-    When the database file is ordered by part NAME:
-    [X] 5 - view a part with name
-
-[X] Limits:
-    0 <= NB <= 1000000
-    0 <= NP <= 1000000
-
+    45524 João Novais
+    46811 Ana Ferreira
 */
 
 #include <stdio.h>
@@ -51,7 +14,7 @@ Options:
 #define SZ_BRAND 16
 #define SZ_PECA 40
 
-int fd;
+int fdreadonly;
 int nb;
 int np;
 
@@ -73,33 +36,39 @@ int parse(char *command, char **args){
 
 // ====== Read file contents ======
 // Read HEADER
-void readheader(char header[29]) {
-    lseek(fd, 0, SEEK_SET);
+int readheader(char header[29]) {
+    lseek(fdreadonly, 0, SEEK_SET);
 
-    if(read(fd, header, 28) == -1) {
-        exit(EXIT_FAILURE);
+    if(read(fdreadonly, header, 28) == -1) {
+        return -1;
     }
+
+    return 0;
 }
 
 // Read BRANDS
-void readbrands(char *brands) {
-    lseek(fd, 28, SEEK_SET);
+int readbrands(char *brands) {
+    lseek(fdreadonly, 28, SEEK_SET);
 
     for (int i = 0; i < nb; i++) {
-        if(read(fd, brands + i * (SZ_BRAND + 1), SZ_BRAND) == -1) {
-            exit(EXIT_FAILURE);
+        if(read(fdreadonly, brands + i * (SZ_BRAND + 1), SZ_BRAND) == -1) {
+            return -1;
         }
         brands[i * (SZ_BRAND + 1) + SZ_BRAND] = '\0';
     }
+
+    return 0;
 }
 
+// ====== Ordered by ID functions ======
 // Read PART by ID
-void readpartid(char *peca, int id){
-    lseek(fd, 28 + (SZ_BRAND * nb) + (SZ_PECA * id), SEEK_SET);
+int readpartid(char *peca, int id){
+    lseek(fdreadonly, 28 + (SZ_BRAND * nb) + (SZ_PECA * id), SEEK_SET);
 
-    if (read(fd, peca, SZ_PECA) == -1) {
-        exit(EXIT_FAILURE);
-    }
+    if (read(fdreadonly, peca, SZ_PECA) == -1) 
+        return -1;
+
+    return 0;
 }
 
 // Print part by ID
@@ -126,7 +95,7 @@ void printpartid(int id){
 }
 
 // Write part
-int writepart(int id, char *name, int idbrand, unsigned int weight, double price){
+int writepart(int fd, int id, char *name, int idbrand, unsigned int weight, double price){
     // Check name length
     int count = 0;
     for(int i = 0; name[i] != '\0'; i++){
@@ -149,20 +118,20 @@ int writepart(int id, char *name, int idbrand, unsigned int weight, double price
 
     lseek(fd, 28 + (SZ_BRAND * nb) + (SZ_PECA * id), SEEK_SET);
     if(write(fd, peca, SZ_PECA) == -1)
-        exit(EXIT_FAILURE);
+        return -1;
 
     return 0;
 }
 
 // Write new part
-void addpart(char *name, int idbrand, unsigned int weight, double price){
+int addpart(int fd, char *name, int idbrand, unsigned int weight, double price){
     // Update global variable
     np++;
 
     // Create new part
-    if (writepart((np - 1), name, idbrand, weight, price) == -1){
+    if (writepart(fd, (np - 1), name, idbrand, weight, price) == -1){
         np--;
-        return;
+        return -1;
     }
     
     // Update header in file
@@ -170,58 +139,85 @@ void addpart(char *name, int idbrand, unsigned int weight, double price){
     *(int *) npnew = np;
     lseek(fd, 20, SEEK_SET);
     if(write(fd, npnew, 4) == -1)
-        exit(EXIT_FAILURE);
+        return -1;
     
     printpartid(np - 1);
+    return 0;
 }
 
-// Read part by NAME
-void readpartname(char *name){
-    // Check name length
+// ====== Ordered by name functions ======
+int binarysearch(char *name) {
     int count = 0;
     for(int i = 0; name[i] != '\0'; i++){
         count++;
         if(count > SZ_NAME)
-            return;
+            return -1;
     }
 
-    lseek(fd, 28 + (SZ_BRAND * nb), SEEK_SET);
+    int low = 0;
+    int high = np - 1;
 
-    char peca[SZ_PECA];
-    for (int i = 0; i < np; i++) {
-        if (read(fd, peca, SZ_PECA) == -1) {
-            exit(EXIT_FAILURE);
+    while (low <= high) {
+        int mid = low + (high - low) / 2;
+
+        char peca[SZ_PECA];
+        lseek(fdreadonly, 28 + (SZ_BRAND * nb) + (SZ_PECA * mid), SEEK_SET);
+        if (read(fdreadonly, peca, SZ_PECA) == -1) {
+            return -1;
         }
 
         char pecaname[SZ_NAME];
         memcpy(pecaname, peca + 4, SZ_NAME);
 
-        // Check if the names match
-        if (strcmp(pecaname, name) == 0) {
-            int id = *((int *) peca);
-            int brandid = *((int*)(peca + 20));
-            char brands[nb * (SZ_BRAND + 1)];
-            readbrands(brands);
-            unsigned int weight = *((unsigned int*)(peca + 24));
-            double price = *((double*)(peca + 32));
-
-            printf("Enter Part Name: PECA %d %s %d %s %d %lf\n", id, pecaname, brandid, brands + brandid * (SZ_BRAND + 1), weight, price);
-
-            return;
-        }
+        int compare = strcmp(pecaname, name);
+        if (compare == 0)
+            return mid;
+        else if (compare < 0)
+            low = mid + 1;
+        else
+            high = mid - 1;
     }
+
+    return -1;
+}
+
+// Read part by NAME
+int readpartname(char *name){
+    int index = binarysearch(name);
+    if (index != -1) {
+        char peca[SZ_PECA];
+        lseek(fdreadonly, 28 + (SZ_BRAND * nb) + (SZ_PECA * index), SEEK_SET);
+        if (read(fdreadonly, peca, SZ_PECA) == -1)
+            return -1;
+
+        char pecaname[SZ_NAME];
+        memcpy(pecaname, peca + 4, SZ_NAME);
+
+        int id = *((int *) peca);
+        int brandid = *((int*)(peca + 20));
+        char brands[nb * (SZ_BRAND + 1)];
+        readbrands(brands);
+        unsigned int weight = *((unsigned int*)(peca + 24));
+        double price = *((double*)(peca + 32));
+
+        printf("Enter Part Name: PECA %d %s %d %s %d %lf\n", id, pecaname, brandid, brands + brandid * (SZ_BRAND + 1), weight, price);
+
+        return 0;
+    }
+
+    return -1; 
 }
 
 int main(int argc, char *argv[]){
     // Check if file is provided
     if(argc != 2)
-        exit(EXIT_FAILURE);
+        return -1;
 
     // Open file
-    int fdopen = open(argv[1], O_RDWR);
+    int fdopen = open(argv[1], O_RDONLY);
     if (fdopen == -1)
-        exit(EXIT_FAILURE);
-    fd = fdopen;
+        return -1;
+    fdreadonly = fdopen;
 
     // Get header contents
     char header[29];
@@ -249,6 +245,7 @@ int main(int argc, char *argv[]){
     char comando[1024];
     char *args[64];
     int len;
+    int argsnum;
 
     while(1){
         if (fgets(comando, sizeof(comando), stdin) == NULL) {
@@ -262,39 +259,50 @@ int main(int argc, char *argv[]){
         if(comando[len - 1] == '\n')
             comando[len - 1] = '\0';
    
-        parse(comando, args);
+        argsnum = parse(comando, args);
 
 
         // General options
-        if (strcmp(args[0], "1") == 0 && args[1] == NULL)
+        if (strcmp(args[0], "1") == 0 && argsnum == 1)
             printf("HEADER %c%s %d %d\n", t, description, np, nb);
         
-        if (strcmp(args[0], "9") == 0 && args[1] == NULL){
-            close(fd);
+        if (strcmp(args[0], "9") == 0 && argsnum == 1){
+            close(fdreadonly);
             exit(EXIT_SUCCESS);
         }
             
 
         // Ordered by ID options
         if (t == '0'){
-            if (strcmp(args[0], "2") == 0 && args[1] != NULL && args[2] == NULL){
-                if (isdigit(*args[1])){
+            if (strcmp(args[0], "2") == 0 && argsnum == 2){
+                if (isdigit(*args[1]) && (atoi(args[1]) < np)){
                     printf("PECA ");
                     printpartid(atoi(args[1]));
                 }
             }
-            if (strcmp(args[0], "3") == 0 && args[4] != NULL && args[5] == NULL){
-                if (isdigit(*args[2]) && isdigit(*args[3]) && isdigit(*args[4]))
-                    addpart(args[1], atoi(args[2]), atoi(args[3]), atoi(args[4]));
+            if (strcmp(args[0], "3") == 0 && argsnum == 5){
+                if (isdigit(*args[2]) && isdigit(*args[3]) && isdigit(*args[4])){
+                    int fdreadwrite = open(argv[1], O_RDWR);
+                    if (fdreadwrite == -1)
+                        return -1;
+                    addpart(fdreadwrite, args[1], atoi(args[2]), atoi(args[3]), atoi(args[4]));
+                    close(fdreadwrite);
+                }
+                    
             }
-            if (strcmp(args[0], "4") == 0 && args[5] != NULL && args[6] == NULL){
-                if (isdigit(*args[1]) && isdigit(*args[3]) && isdigit(*args[4]) && isdigit(*args[5]))
-                    writepart(atoi(args[1]), args[2], atoi(args[3]), atoi(args[4]), atoi(args[5]));
+            if (strcmp(args[0], "4") == 0 && argsnum == 6){
+                if (isdigit(*args[1]) && isdigit(*args[3]) && isdigit(*args[4]) && isdigit(*args[5])){
+                    int fdreadwrite = open(argv[1], O_RDWR);
+                    if (fdreadwrite == -1)
+                        return -1;
+                    writepart(fdreadwrite, atoi(args[1]), args[2], atoi(args[3]), atoi(args[4]), atoi(args[5]));
+                    close(fdreadwrite);
+                }   
             }
         }
         
         // Ordered by NAME option
-        if (t == '1' && strcmp(args[0], "5") == 0 && args[1] != NULL && args[2] == NULL){
+        if (t == '1' && strcmp(args[0], "5") == 0 && argsnum == 2){
             readpartname(args[1]);
         }
     }
